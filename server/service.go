@@ -356,13 +356,14 @@ func (m *BoostService) handleRegisterValidator(w http.ResponseWriter, req *http.
 
 func (m *BoostService) handleDelegate(w http.ResponseWriter, req *http.Request) {
 	log := m.log.WithField("method", "delegate")
-	log.Debug("delegate:", req.Body)
 
 	payload := make([]SignedDelegation, 0)
 	if err := DecodeJSON(req.Body, &payload); err != nil {
 		m.respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+
+	log.Debug("delegate:", payload)
 
 	for _, signedDelegation := range payload {
 		if signedDelegation.Message.Action != 0 {

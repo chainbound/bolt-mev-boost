@@ -114,6 +114,10 @@ type SignedDelegation struct {
 	Signature phase0.BLSSignature `json:"signature"`
 }
 
+func (s *SignedDelegation) String() string {
+	return JSONStringify(s)
+}
+
 // Delegation as from Specs: https://docs.boltprotocol.xyz/api/builder#delegate
 type Delegation struct {
 	Action          uint8            `json:"action"`
