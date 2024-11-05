@@ -115,7 +115,7 @@ type SignedDelegation struct {
 }
 
 func (s *SignedDelegation) String() string {
-	return JSONStringify(s)
+	return JSONStringifyPretty(s)
 }
 
 // Delegation as from Specs: https://docs.boltprotocol.xyz/api/builder#delegate

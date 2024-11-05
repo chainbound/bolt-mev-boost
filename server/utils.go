@@ -289,10 +289,19 @@ func JSONStringify(obj any) string {
 	return string(b)
 }
 
+func JSONStringifyPretty(obj any) string {
+	b, err := json.MarshalIndent(obj, "", " ")
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
 func CalculateMerkleMultiProofs(rootNode *fastssz.Node, constraints []struct {
 	tx   Transaction
 	hash phase0.Hash32
-}) (inclusionProof *InclusionProof, err error) {
+},
+) (inclusionProof *InclusionProof, err error) {
 	// using our gen index formula: 2 * 2^21 + preconfIndex
 	baseGeneralizedIndex := int(math.Pow(float64(2), float64(21)))
 	generalizedIndexes := make([]int, len(constraints))
