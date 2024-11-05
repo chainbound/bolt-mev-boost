@@ -33,6 +33,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 )
 
 // Standard errors
@@ -452,17 +453,7 @@ func (m *BoostService) handleRevoke(w http.ResponseWriter, req *http.Request) {
 }
 
 // verifyInclusionProof verifies the proofs against the constraints, and returns an error if the proofs are invalid.
-func (m *BoostService) verifyInclusionProof(transactionsRoot phase0.Root, proof *InclusionProof, slot uint64) error {
-	log := m.log.WithFields(logrus.Fields{})
-
-	// BOLT: get constraints for the slot
-	inclusionConstraints, exists := m.constraints.Get(slot)
-
-	if !exists {
-		log.Warnf("[BOLT]: No constraints found for slot %d", slot)
-		return errMissingConstraint
-	}
-
+func (m *BoostService) verifyInclusionProof(transactionsRoot phase0.Root, proof *InclusionProof, inclusionConstraints map[gethCommon.Hash]*Transaction) error {
 	if proof == nil {
 		return errNilProof
 	}
@@ -474,7 +465,7 @@ func (m *BoostService) verifyInclusionProof(transactionsRoot phase0.Root, proof 
 		return errHashesIndexesMismatch
 	}
 
-	log.Infof("[BOLT]: Verifying merkle multiproofs for %d transactions", len(proof.TransactionHashes))
+	m.log.Infof("verifying merkle multiproofs for %d transactions", len(proof.TransactionHashes))
 
 	// Decode the constraints, and sort them according to the utility function used
 	// TODO: this should be done before verification ideally
@@ -513,7 +504,6 @@ func (m *BoostService) verifyInclusionProof(transactionsRoot phase0.Root, proof 
 
 		leaves[i] = txHashTreeRoot[:]
 		indexes[i] = int(proof.GeneralizedIndexes[i])
-		i++
 	}
 
 	hashes := make([][]byte, len(proof.MerkleHashes))
@@ -530,11 +520,10 @@ func (m *BoostService) verifyInclusionProof(transactionsRoot phase0.Root, proof 
 	}
 
 	if !ok {
-		log.Error("[BOLT]: proof verification failed")
+		log.Error("merkle proof verification failed")
 		return errInvalidProofs
-	} else {
-		log.Info(fmt.Sprintf("[BOLT]: merkle proof verified in %s", elapsed))
 	}
+	log.Infof("merkle proof verified in %s", elapsed)
 
 	return nil
 }
@@ -871,6 +860,10 @@ func (m *BoostService) handleGetHeaderWithProofs(w http.ResponseWriter, req *htt
 	result := bidResp{}                           // the final response, containing the highest bid (if any)
 	relays := make(map[BlockHashHex][]RelayEntry) // relays that sent the bid for a specific blockHash
 
+	// Get the constraints for this slot
+	inclusionConstraints, exists := m.constraints.Get(slotUint)
+	shouldCheckInclusionProofsAgainstConstraints := exists && inclusionConstraints != nil
+
 	// Call the relays
 	var mu sync.Mutex
 	var wg sync.WaitGroup
@@ -970,15 +963,20 @@ func (m *BoostService) handleGetHeaderWithProofs(w http.ResponseWriter, req *htt
 			}
 
 			// BOLT: verify inclusion proofs. If they don't match, we don't consider the bid to be valid.
-			if responsePayload.Proofs != nil {
+			if shouldCheckInclusionProofsAgainstConstraints {
+				if responsePayload.Proofs == nil {
+					log.Warn("relay did not provide proofs despite existing constraints for slot")
+					return
+				}
+
 				// BOLT: verify the proofs against the constraints. If they don't match, we don't consider the bid to be valid.
 				transactionsRoot, err := responsePayload.TransactionsRoot()
 				if err != nil {
-					log.WithError(err).Error("[BOLT]: error getting transaction root")
+					log.WithError(err).Error("error getting transaction root from relay response")
 					return
 				}
-				if err := m.verifyInclusionProof(transactionsRoot, responsePayload.Proofs, slotUint); err != nil {
-					log.Warnf("[BOLT]: Proof verification failed for relay %s: %s", relay.URL, err)
+				if err := m.verifyInclusionProof(transactionsRoot, responsePayload.Proofs, inclusionConstraints); err != nil {
+					log.Warnf("proof verification failed for relay %s", err)
 					return
 				}
 			}
@@ -992,9 +990,10 @@ func (m *BoostService) handleGetHeaderWithProofs(w http.ResponseWriter, req *htt
 			// Compare the bid with already known top bid (if any)
 			if !result.response.IsEmpty() {
 				valueDiff := bidInfo.value.Cmp(result.bidInfo.value)
-				if valueDiff == -1 { // current bid is less profitable than already known one
+				switch valueDiff {
+				case -1: // current bid is less profitable than already known one
 					return
-				} else if valueDiff == 0 { // current bid is equally profitable as already known one. Use hash as tiebreaker
+				case 0: // current bid is equally profitable as already known one. Use hash as tiebreaker
 					previousBidBlockHash := result.bidInfo.blockHash
 					if bidInfo.blockHash.String() >= previousBidBlockHash.String() {
 						return
@@ -1003,7 +1002,7 @@ func (m *BoostService) handleGetHeaderWithProofs(w http.ResponseWriter, req *htt
 			}
 
 			// Use this relay's response as mev-boost response because it's most profitable
-			log.Infof("new best bid. Has proofs: %v", responsePayload.Proofs != nil)
+			log.Infof("new best bid. expected proofs: %v, got proofs: %v", shouldCheckInclusionProofsAgainstConstraints, responsePayload.Proofs != nil)
 			result.response = *responsePayload.VersionedSignedBuilderBid
 			result.bidInfo = bidInfo
 			result.t = time.Now()
