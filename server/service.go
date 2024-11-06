@@ -29,7 +29,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
-	log "github.com/sirupsen/logrus"
 )
 
 // Standard errors
@@ -44,15 +43,13 @@ var (
 
 // Bolt errors
 var (
-	errNilProof                  = errors.New("nil proof")
-	errMissingConstraint         = errors.New("missing constraint")
-	errMismatchProofSize         = errors.New("proof size mismatch")
-	errInvalidProofs             = errors.New("proof verification failed")
-	errInvalidRoot               = errors.New("failed getting tx root from bid")
-	errNilConstraint             = errors.New("nil constraint")
-	errNilConstraints            = errors.New("nil constraints hashmap")
-	errHashesIndexesMismatch     = errors.New("proof transaction hashes and indexes length mismatch")
-	errHashesConstraintsMismatch = errors.New("proof transaction hashes and constraints length mismatch")
+	errNilProof              = errors.New("nil proof")
+	errMismatchProofSize     = errors.New("proof size mismatch")
+	errInvalidProofs         = errors.New("proof verification failed")
+	errInvalidRoot           = errors.New("failed getting tx root from bid")
+	errNilConstraint         = errors.New("nil constraint")
+	errNilConstraints        = errors.New("nil constraints hashmap")
+	errHashesIndexesMismatch = errors.New("proof transaction hashes and indexes length mismatch")
 )
 
 var (
@@ -473,15 +470,15 @@ func (m *BoostService) verifyInclusionProof(transactionsRoot phase0.Root, proof 
 	ok, err := fastSsz.VerifyMultiproof(transactionsRoot[:], hashes, leaves, indexes)
 	elapsed := time.Since(currentTime)
 	if err != nil {
-		log.WithError(err).Error("error verifying merkle proof")
+		m.log.WithError(err).Error("error verifying merkle proof")
 		return err
 	}
 
 	if !ok {
-		log.Error("merkle proof verification failed")
+		m.log.Error("merkle proof verification failed")
 		return errInvalidProofs
 	}
-	log.Infof("merkle proof verified in %s", elapsed)
+	m.log.Infof("merkle proof verified in %s", elapsed)
 
 	return nil
 }
@@ -494,8 +491,6 @@ func (m *BoostService) handleSubmitConstraint(w http.ResponseWriter, req *http.R
 		"method": "submitConstraint",
 		"ua":     ua,
 	})
-
-	log.Info("submitConstraint")
 
 	payload := BatchedSignedConstraints{}
 	if err := DecodeJSON(req.Body, &payload); err != nil {
@@ -516,7 +511,7 @@ func (m *BoostService) handleSubmitConstraint(w http.ResponseWriter, req *http.R
 			continue
 		}
 
-		log.Infof("added inclusion constraints to cache. slot = %d, validatorPubkey = %s, number of relays = %d", constraintsMessage.Slot, constraintsMessage.Pubkey.String(), len(m.relays))
+		log.Infof("added inclusion constraints to cache. slot = %d, validatorPubkey = %s", constraintsMessage.Slot, constraintsMessage.Pubkey.String())
 	}
 
 	relayRespCh := make(chan error, len(m.relays))
@@ -526,9 +521,7 @@ func (m *BoostService) handleSubmitConstraint(w http.ResponseWriter, req *http.R
 			url := relay.GetURI(pathSubmitConstraint)
 			log := log.WithField("url", url)
 
-			log.Infof("sending request for %d constraint to relay", len(payload))
 			_, err := SendHTTPRequest(context.Background(), m.httpClientSubmitConstraint, http.MethodPost, url, ua, nil, payload, nil)
-			log.Infof("sent request for %d constraint to relay. err = %v", len(payload), err)
 			relayRespCh <- err
 			if err != nil {
 				log.WithError(err).Warn("error calling submitConstraint on relay")
@@ -536,7 +529,6 @@ func (m *BoostService) handleSubmitConstraint(w http.ResponseWriter, req *http.R
 			}
 		}(relay)
 	}
-
 	for i := 0; i < len(m.relays); i++ {
 		respErr := <-relayRespCh
 		if respErr == nil {
