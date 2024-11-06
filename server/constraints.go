@@ -60,7 +60,7 @@ func NewConstraintsCache(cap int) *ConstraintsCache {
 // AddInclusionConstraints adds multiple inclusion constraints to the cache at the given slot
 func (c *ConstraintsCache) AddInclusionConstraints(slot uint64, transactions []*HexTransaction) error {
 	if len(transactions) == 0 {
-		return errors.New("cannot add empty transactions")
+		return nil
 	}
 
 	m, exists := c.constraints.Get(slot)
