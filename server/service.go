@@ -453,7 +453,7 @@ func (m *BoostService) handleRevoke(w http.ResponseWriter, req *http.Request) {
 }
 
 // verifyInclusionProof verifies the proofs against the constraints, and returns an error if the proofs are invalid.
-func (m *BoostService) verifyInclusionProof(transactionsRoot phase0.Root, proof *InclusionProof, inclusionConstraints map[gethCommon.Hash]*Transaction) error {
+func (m *BoostService) verifyInclusionProof(transactionsRoot phase0.Root, proof *InclusionProof, inclusionConstraints map[gethCommon.Hash]*HexTransaction) error {
 	if proof == nil {
 		return errNilProof
 	}
@@ -496,7 +496,7 @@ func (m *BoostService) verifyInclusionProof(transactionsRoot phase0.Root, proof 
 			return err
 		}
 
-		txBytes := Transaction(encoded)
+		txBytes := HexTransaction(encoded)
 		txHashTreeRoot, err := txBytes.HashTreeRoot()
 		if err != nil {
 			return errInvalidRoot

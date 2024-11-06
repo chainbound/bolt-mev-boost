@@ -25,7 +25,7 @@ type ConstraintsMessage struct {
 	Pubkey       phase0.BLSPubKey `json:"pubkey"`
 	Slot         uint64           `json:"slot"`
 	Top          bool             `json:"top"`
-	Transactions []Transaction    `json:"transactions"`
+	Transactions []HexTransaction `json:"transactions"`
 }
 
 func (s *SignedConstraints) String() string {
@@ -39,22 +39,22 @@ func (m *ConstraintsMessage) String() string {
 // ConstraintsCache is a cache for constraints.
 type ConstraintsCache struct {
 	// map of slots to all constraints for that slot
-	constraints *lru.Cache[uint64, map[gethCommon.Hash]*Transaction]
+	constraints *lru.Cache[uint64, map[gethCommon.Hash]*HexTransaction]
 }
 
 // NewConstraintsCache creates a new constraint cache.
 // cap is the maximum number of slots to store constraints for.
 func NewConstraintsCache(cap int) *ConstraintsCache {
-	constraints, _ := lru.New[uint64, map[gethCommon.Hash]*Transaction](cap)
+	constraints, _ := lru.New[uint64, map[gethCommon.Hash]*HexTransaction](cap)
 	return &ConstraintsCache{
 		constraints: constraints,
 	}
 }
 
 // AddInclusionConstraint adds an inclusion constraint to the cache at the given slot for the given transaction.
-func (c *ConstraintsCache) AddInclusionConstraint(slot uint64, tx Transaction, index *uint64) error {
+func (c *ConstraintsCache) AddInclusionConstraint(slot uint64, tx HexTransaction, index *uint64) error {
 	if _, exists := c.constraints.Get(slot); !exists {
-		c.constraints.Add(slot, make(map[gethCommon.Hash]*Transaction))
+		c.constraints.Add(slot, make(map[gethCommon.Hash]*HexTransaction))
 	}
 
 	// parse transaction to get its hash and store it in the cache
@@ -72,9 +72,9 @@ func (c *ConstraintsCache) AddInclusionConstraint(slot uint64, tx Transaction, i
 }
 
 // AddInclusionConstraints adds multiple inclusion constraints to the cache at the given slot
-func (c *ConstraintsCache) AddInclusionConstraints(slot uint64, transactions []Transaction) error {
+func (c *ConstraintsCache) AddInclusionConstraints(slot uint64, transactions []HexTransaction) error {
 	if _, exists := c.constraints.Get(slot); !exists {
-		c.constraints.Add(slot, make(map[gethCommon.Hash]*Transaction))
+		c.constraints.Add(slot, make(map[gethCommon.Hash]*HexTransaction))
 	}
 
 	m, _ := c.constraints.Get(slot)
@@ -91,12 +91,12 @@ func (c *ConstraintsCache) AddInclusionConstraints(slot uint64, transactions []T
 }
 
 // Get gets the constraints at the given slot.
-func (c *ConstraintsCache) Get(slot uint64) (map[gethCommon.Hash]*Transaction, bool) {
+func (c *ConstraintsCache) Get(slot uint64) (map[gethCommon.Hash]*HexTransaction, bool) {
 	return c.constraints.Get(slot)
 }
 
 // FindTransactionByHash finds the constraint for the given transaction hash and returns it.
-func (c *ConstraintsCache) FindTransactionByHash(txHash gethCommon.Hash) (*Transaction, bool) {
+func (c *ConstraintsCache) FindTransactionByHash(txHash gethCommon.Hash) (*HexTransaction, bool) {
 	for _, hashToTx := range c.constraints.Values() {
 		if tx, exists := hashToTx[txHash]; exists {
 			return tx, true

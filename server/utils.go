@@ -298,7 +298,7 @@ func JSONStringifyPretty(obj any) string {
 }
 
 func CalculateMerkleMultiProofs(rootNode *fastssz.Node, constraints []struct {
-	tx   Transaction
+	tx   HexTransaction
 	hash phase0.Hash32
 },
 ) (inclusionProof *InclusionProof, err error) {
