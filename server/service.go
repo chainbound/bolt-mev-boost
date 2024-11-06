@@ -23,7 +23,6 @@ import (
 	eth2ApiV1Deneb "github.com/attestantio/go-eth2-client/api/v1/deneb"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	gethCommon "github.com/ethereum/go-ethereum/common"
-	gethTypes "github.com/ethereum/go-ethereum/core/types"
 	fastSsz "github.com/ferranbt/fastssz"
 	"github.com/flashbots/go-boost-utils/ssz"
 	"github.com/flashbots/go-boost-utils/types"
@@ -54,6 +53,7 @@ var (
 	errInvalidProofs             = errors.New("proof verification failed")
 	errInvalidRoot               = errors.New("failed getting tx root from bid")
 	errNilConstraint             = errors.New("nil constraint")
+	errNilConstraints            = errors.New("nil constraints hashmap")
 	errHashesIndexesMismatch     = errors.New("proof transaction hashes and indexes length mismatch")
 	errHashesConstraintsMismatch = errors.New("proof transaction hashes and constraints length mismatch")
 )
@@ -453,9 +453,13 @@ func (m *BoostService) handleRevoke(w http.ResponseWriter, req *http.Request) {
 }
 
 // verifyInclusionProof verifies the proofs against the constraints, and returns an error if the proofs are invalid.
-func (m *BoostService) verifyInclusionProof(transactionsRoot phase0.Root, proof *InclusionProof, inclusionConstraints map[gethCommon.Hash]*HexTransaction) error {
+func (m *BoostService) verifyInclusionProof(transactionsRoot phase0.Root, proof *InclusionProof, inclusionConstraints TransactionHashMap) error {
 	if proof == nil {
 		return errNilProof
+	}
+
+	if inclusionConstraints == nil {
+		return errNilConstraints
 	}
 
 	if len(proof.TransactionHashes) != len(inclusionConstraints) {
@@ -465,39 +469,18 @@ func (m *BoostService) verifyInclusionProof(transactionsRoot phase0.Root, proof 
 		return errHashesIndexesMismatch
 	}
 
-	m.log.Infof("verifying merkle multiproofs for %d transactions", len(proof.TransactionHashes))
-
-	// Decode the constraints, and sort them according to the utility function used
-	// TODO: this should be done before verification ideally
-	hashToTransaction := make(HashToTransactionDecoded)
-	for hash, tx := range inclusionConstraints {
-		transaction := new(gethTypes.Transaction)
-		err := transaction.UnmarshalBinary(*tx)
-		if err != nil {
-			log.WithError(err).Error("error unmarshalling transaction while verifying proofs")
-			return err
-		}
-		hashToTransaction[hash] = transaction.WithoutBlobTxSidecar()
-	}
 	leaves := make([][]byte, len(inclusionConstraints))
 	indexes := make([]int, len(proof.GeneralizedIndexes))
 
 	for i, hash := range proof.TransactionHashes {
-		tx, ok := hashToTransaction[gethCommon.Hash(hash)]
+		tx, ok := inclusionConstraints[gethCommon.Hash(hash)]
 		if tx == nil || !ok {
 			return errNilConstraint
 		}
 
 		// Compute the hash tree root for the raw preconfirmed transaction
 		// and use it as "Leaf" in the proof to be verified against
-		encoded, err := tx.MarshalBinary()
-		if err != nil {
-			log.WithError(err).Error("error marshalling transaction without blob tx sidecar")
-			return err
-		}
-
-		txBytes := HexTransaction(encoded)
-		txHashTreeRoot, err := txBytes.HashTreeRoot()
+		txHashTreeRoot, err := tx.HashTreeRoot()
 		if err != nil {
 			return errInvalidRoot
 		}
@@ -550,8 +533,6 @@ func (m *BoostService) handleSubmitConstraint(w http.ResponseWriter, req *http.R
 	for _, signedConstraints := range payload {
 		constraintsMessage := signedConstraints.Message
 
-		log.Infof("[BOLT]: adding inclusion constraints to cache. slot = %d, validatorPubkey = %s, number of relays = %d", constraintsMessage.Slot, constraintsMessage.Pubkey.String(), len(m.relays))
-
 		// Add the constraints to the cache.
 		// They will be cleared when we receive a payload for the slot in `handleGetPayload`
 		err := m.constraints.AddInclusionConstraints(constraintsMessage.Slot, constraintsMessage.Transactions)
@@ -560,7 +541,7 @@ func (m *BoostService) handleSubmitConstraint(w http.ResponseWriter, req *http.R
 			continue
 		}
 
-		log.Infof("[BOLT]: added inclusion constraints to cache. slot = %d, validatorPubkey = %s, number of relays = %d", constraintsMessage.Slot, constraintsMessage.Pubkey.String(), len(m.relays))
+		log.Infof("added inclusion constraints to cache. slot = %d, validatorPubkey = %s, number of relays = %d", constraintsMessage.Slot, constraintsMessage.Pubkey.String(), len(m.relays))
 	}
 
 	relayRespCh := make(chan error, len(m.relays))

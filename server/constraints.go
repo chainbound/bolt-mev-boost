@@ -1,6 +1,8 @@
 package server
 
 import (
+	"errors"
+
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	gethCommon "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -22,10 +24,10 @@ type SignedConstraints struct {
 // ConstraintsMessage represents the constraints message.
 // Reference: https://docs.boltprotocol.xyz/api/builder
 type ConstraintsMessage struct {
-	Pubkey       phase0.BLSPubKey `json:"pubkey"`
-	Slot         uint64           `json:"slot"`
-	Top          bool             `json:"top"`
-	Transactions []HexTransaction `json:"transactions"`
+	Pubkey       phase0.BLSPubKey  `json:"pubkey"`
+	Slot         uint64            `json:"slot"`
+	Top          bool              `json:"top"`
+	Transactions []*HexTransaction `json:"transactions"`
 }
 
 func (s *SignedConstraints) String() string {
@@ -36,62 +38,62 @@ func (m *ConstraintsMessage) String() string {
 	return JSONStringify(m)
 }
 
+// TransactionHashMap is a map of transaction hashes to transactions that have
+// been marshalled without the blob sidecar.
+type TransactionHashMap = map[gethCommon.Hash]*HexTransaction
+
 // ConstraintsCache is a cache for constraints.
 type ConstraintsCache struct {
 	// map of slots to all constraints for that slot
-	constraints *lru.Cache[uint64, map[gethCommon.Hash]*HexTransaction]
+	constraints *lru.Cache[uint64, TransactionHashMap]
 }
 
 // NewConstraintsCache creates a new constraint cache.
 // cap is the maximum number of slots to store constraints for.
 func NewConstraintsCache(cap int) *ConstraintsCache {
-	constraints, _ := lru.New[uint64, map[gethCommon.Hash]*HexTransaction](cap)
+	constraints, _ := lru.New[uint64, TransactionHashMap](cap)
 	return &ConstraintsCache{
 		constraints: constraints,
 	}
 }
 
-// AddInclusionConstraint adds an inclusion constraint to the cache at the given slot for the given transaction.
-func (c *ConstraintsCache) AddInclusionConstraint(slot uint64, tx HexTransaction, index *uint64) error {
-	if _, exists := c.constraints.Get(slot); !exists {
-		c.constraints.Add(slot, make(map[gethCommon.Hash]*HexTransaction))
-	}
-
-	// parse transaction to get its hash and store it in the cache
-	// for constant time lookup later
-	parsedTx := new(types.Transaction)
-	err := parsedTx.UnmarshalBinary(tx)
-	if err != nil {
-		return err
-	}
-
-	m, _ := c.constraints.Get(slot)
-	m[parsedTx.Hash()] = &tx
-
-	return nil
-}
-
 // AddInclusionConstraints adds multiple inclusion constraints to the cache at the given slot
-func (c *ConstraintsCache) AddInclusionConstraints(slot uint64, transactions []HexTransaction) error {
-	if _, exists := c.constraints.Get(slot); !exists {
-		c.constraints.Add(slot, make(map[gethCommon.Hash]*HexTransaction))
+func (c *ConstraintsCache) AddInclusionConstraints(slot uint64, transactions []*HexTransaction) error {
+	if len(transactions) == 0 {
+		return errors.New("cannot add empty transactions")
 	}
 
-	m, _ := c.constraints.Get(slot)
-	for _, tx := range transactions {
-		parsedTx := new(types.Transaction)
-		err := parsedTx.UnmarshalBinary(tx)
+	m, exists := c.constraints.Get(slot)
+	if !exists {
+		c.constraints.Add(slot, make(TransactionHashMap))
+	}
+
+	for _, txRaw := range transactions {
+		if txRaw == nil {
+			return errors.New("cannot add nil transaction")
+		}
+
+		txDecoded := new(types.Transaction)
+		err := txDecoded.UnmarshalBinary(*txRaw)
 		if err != nil {
 			return err
 		}
-		m[parsedTx.Hash()] = &tx
+
+		txDecoded = txDecoded.WithoutBlobTxSidecar()
+		txWithoutblobSidecarRaw, err := txDecoded.MarshalBinary()
+		if err != nil {
+			return err
+		}
+		hex := HexTransaction(txWithoutblobSidecarRaw)
+
+		m[txDecoded.Hash()] = &hex
 	}
 
 	return nil
 }
 
 // Get gets the constraints at the given slot.
-func (c *ConstraintsCache) Get(slot uint64) (map[gethCommon.Hash]*HexTransaction, bool) {
+func (c *ConstraintsCache) Get(slot uint64) (TransactionHashMap, bool) {
 	return c.constraints.Get(slot)
 }
 
