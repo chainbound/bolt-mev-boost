@@ -43,12 +43,10 @@ func (v *VersionedSignedBuilderBidWithProofs) MarshalJSON() ([]byte, error) {
 	}
 }
 
-// this is necessary, because the mev-boost-relay deserialization doesn't expect a "Version" and "Data" wrapper object
-// for deserialization. Instead, it tries to decode the object into the "Deneb" version first and if that fails, it tries
-// the "Capella" version. This is a workaround to make the deserialization work.
-//
-// NOTE(bolt): struct embedding of the VersionedSignedBuilderBid is not possible for some reason because it causes the json
-// encoding to omit the `proofs` field. Embedding all of the fields directly does the job.
+// Custom UnmarshalJSON implementation according to Constraints-API. This is
+// needed in order to be spec compliant and without re-implementing the
+// underlying consensus types from scratch. Reference:
+// https://docs.boltprotocol.xyz/technical-docs/api/builder#get_header_with_proofs
 func (v *VersionedSignedBuilderBidWithProofs) UnmarshalJSON(data []byte) error {
 	var err error
 
