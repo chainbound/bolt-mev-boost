@@ -9,6 +9,8 @@ import (
 	lru "github.com/hashicorp/golang-lru/v2"
 )
 
+var errNilTransaction = errors.New("cannot add nil transaction")
+
 type (
 	BatchedSignedConstraints = []*SignedConstraints
 	HashToTransactionDecoded = map[gethCommon.Hash]*types.Transaction
@@ -49,9 +51,9 @@ type ConstraintsCache struct {
 }
 
 // NewConstraintsCache creates a new constraint cache.
-// cap is the maximum number of slots to store constraints for.
-func NewConstraintsCache(cap int) *ConstraintsCache {
-	constraints, _ := lru.New[uint64, TransactionHashMap](cap)
+// _cap is the maximum number of slots to store constraints for.
+func NewConstraintsCache(_cap int) *ConstraintsCache {
+	constraints, _ := lru.New[uint64, TransactionHashMap](_cap)
 	return &ConstraintsCache{
 		constraints: constraints,
 	}
@@ -66,11 +68,12 @@ func (c *ConstraintsCache) AddInclusionConstraints(slot uint64, transactions []*
 	m, exists := c.constraints.Get(slot)
 	if !exists {
 		c.constraints.Add(slot, make(TransactionHashMap))
+		m, _ = c.constraints.Get(slot)
 	}
 
 	for _, txRaw := range transactions {
 		if txRaw == nil {
-			return errors.New("cannot add nil transaction")
+			return errNilTransaction
 		}
 
 		txDecoded := new(types.Transaction)
