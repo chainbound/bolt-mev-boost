@@ -389,7 +389,7 @@ func TestParseConstraints(t *testing.T) {
 	require.Len(t, constraints, 1)
 	require.Equal(t, phase0.BLSPubKey(_HexToBytes("0xa695ad325dfc7e1191fbc9f186f58eff42a634029731b18380ff89bf42c464a42cb8ca55b200f051f57f1e1893c68759")), constraints[0].Message.Pubkey)
 	require.Equal(t, uint64(32), constraints[0].Message.Slot)
-	require.Equal(t, constraints[0].Message.Transactions[0], Transaction(_HexToBytes("0x02f86c870c72dd9d5e883e4d0183408f2382520894d2e2adf7177b7a8afddbc12d1634cf23ea1a71020180c001a08556dcfea479b34675db3fe08e29486fe719c2b22f6b0c1741ecbbdce4575cc6a01cd48009ccafd6b9f1290bbe2ceea268f94101d1d322c787018423ebcbc87ab4")))
+	require.Equal(t, constraints[0].Message.Transactions[0], HexTransaction(_HexToBytes("0x02f86c870c72dd9d5e883e4d0183408f2382520894d2e2adf7177b7a8afddbc12d1634cf23ea1a71020180c001a08556dcfea479b34675db3fe08e29486fe719c2b22f6b0c1741ecbbdce4575cc6a01cd48009ccafd6b9f1290bbe2ceea268f94101d1d322c787018423ebcbc87ab4")))
 }
 
 func TestConstraintsAndProofs(t *testing.T) {
@@ -397,14 +397,14 @@ func TestConstraintsAndProofs(t *testing.T) {
 	slot := uint64(8978583)
 
 	txHash := _HexToHash("0xba40436abdc8adc037e2c92ea1099a5849053510c3911037ff663085ce44bc49")
-	rawTx := _HexToBytes("0x02f871018304a5758085025ff11caf82565f94388c818ca8b9251b393131c08a736a67ccb1929787a41bb7ee22b41380c001a0c8630f734aba7acb4275a8f3b0ce831cf0c7c487fd49ee7bcca26ac622a28939a04c3745096fa0130a188fa249289fd9e60f9d6360854820dba22ae779ea6f573f")
+	rawTx := HexTransaction(HexBytes(_HexToBytes("0x02f871018304a5758085025ff11caf82565f94388c818ca8b9251b393131c08a736a67ccb1929787a41bb7ee22b41380c001a0c8630f734aba7acb4275a8f3b0ce831cf0c7c487fd49ee7bcca26ac622a28939a04c3745096fa0130a188fa249289fd9e60f9d6360854820dba22ae779ea6f573f")))
 
 	payload := BatchedSignedConstraints{&SignedConstraints{
 		Message: ConstraintsMessage{
 			Pubkey:       phase0.BLSPubKey(_HexToBytes("0x8a1d7b8dd64e0aafe7ea7b6c95065c9364cf99d38470c12ee807d55f7de1529ad29ce2c422e0b65e3d5a05c02caca249")),
 			Slot:         slot,
 			Top:          false,
-			Transactions: []Transaction{rawTx},
+			Transactions: []*HexTransaction{&rawTx},
 		},
 		Signature: phase0.BLSSignature(_HexToBytes(
 			"0x81510b571e22f89d1697545aac01c9ad0c1e7a3e778b3078bef524efae14990e58a6e960a152abd49de2e18d7fd3081c15d5c25867ccfad3d47beef6b39ac24b6b9fbf2cfa91c88f67aff750438a6841ec9e4a06a94ae41410c4f97b75ab284c")),
@@ -424,7 +424,7 @@ func TestConstraintsAndProofs(t *testing.T) {
 
 		tx, ok := backend.boost.constraints.FindTransactionByHash(common.HexToHash(txHash.String()))
 		require.True(t, ok)
-		require.Equal(t, Transaction(rawTx), *tx)
+		require.Equal(t, rawTx, *tx)
 	})
 
 	t.Run("Normal function with constraints", func(t *testing.T) {
@@ -440,7 +440,7 @@ func TestConstraintsAndProofs(t *testing.T) {
 			"0x8a1d7b8dd64e0aafe7ea7b6c95065c9364cf99d38470c12ee807d55f7de1529ad29ce2c422e0b65e3d5a05c02caca249",
 			spec.DataVersionDeneb,
 			[]struct {
-				tx   Transaction
+				tx   HexTransaction
 				hash phase0.Hash32
 			}{{rawTx, txHash}},
 		)

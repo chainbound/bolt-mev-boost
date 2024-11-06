@@ -10,8 +10,6 @@ import (
 
 	fastSsz "github.com/ferranbt/fastssz"
 
-	"github.com/attestantio/go-builder-client/api/bellatrix"
-	"github.com/attestantio/go-builder-client/api/capella"
 	"github.com/attestantio/go-builder-client/api/deneb"
 	builderSpec "github.com/attestantio/go-builder-client/spec"
 	consensusSpec "github.com/attestantio/go-eth2-client/spec"
@@ -26,34 +24,10 @@ type VersionedSignedBuilderBidWithProofs struct {
 	*builderSpec.VersionedSignedBuilderBid
 }
 
-// this is necessary, because the mev-boost-relay deserialization doesn't expect a "Version" and "Data" wrapper object
-// for deserialization. Instead, it tries to decode the object into the "Deneb" version first and if that fails, it tries
-// the "Capella" version. This is a workaround to make the deserialization work.
-//
-// NOTE(bolt): struct embedding of the VersionedSignedBuilderBid is not possible for some reason because it causes the json
-// encoding to omit the `proofs` field. Embedding all of the fields directly does the job.
+// Custom MarshalJSON implementation according to Constraints-API.
+// Reference: https://docs.boltprotocol.xyz/technical-docs/api/builder#get_header_with_proofs
 func (v *VersionedSignedBuilderBidWithProofs) MarshalJSON() ([]byte, error) {
 	switch v.Version {
-	case consensusSpec.DataVersionBellatrix:
-		return json.Marshal(struct {
-			Message   *bellatrix.BuilderBid `json:"message"`
-			Signature phase0.BLSSignature   `json:"signature"`
-			Proofs    *InclusionProof       `json:"proofs"`
-		}{
-			Message:   v.Bellatrix.Message,
-			Signature: v.Bellatrix.Signature,
-			Proofs:    v.Proofs,
-		})
-	case consensusSpec.DataVersionCapella:
-		return json.Marshal(struct {
-			Message   *capella.BuilderBid `json:"message"`
-			Signature phase0.BLSSignature `json:"signature"`
-			Proofs    *InclusionProof     `json:"proofs"`
-		}{
-			Message:   v.Capella.Message,
-			Signature: v.Capella.Signature,
-			Proofs:    v.Proofs,
-		})
 	case consensusSpec.DataVersionDeneb:
 		return json.Marshal(struct {
 			Message   *deneb.BuilderBid   `json:"message"`
@@ -64,17 +38,21 @@ func (v *VersionedSignedBuilderBidWithProofs) MarshalJSON() ([]byte, error) {
 			Signature: v.Deneb.Signature,
 			Proofs:    v.Proofs,
 		})
+	default:
+		return nil, fmt.Errorf("unknown or unsupported data version %d", v.Version)
 	}
-
-	return nil, fmt.Errorf("unknown data version %d", v.Version)
 }
 
+// Custom UnmarshalJSON implementation according to Constraints-API. This is
+// needed in order to be spec compliant and without re-implementing the
+// underlying consensus types from scratch. Reference:
+// https://docs.boltprotocol.xyz/technical-docs/api/builder#get_header_with_proofs
 func (v *VersionedSignedBuilderBidWithProofs) UnmarshalJSON(data []byte) error {
 	var err error
 
 	var partialBid struct {
 		Version consensusSpec.DataVersion `json:"version"`
-		Proofs  *InclusionProof           `json:"proofs"`
+		// No `Data` field yet, because we need a workaround to add the `Proofs` field in it
 	}
 
 	err = json.Unmarshal(data, &partialBid)
@@ -82,11 +60,14 @@ func (v *VersionedSignedBuilderBidWithProofs) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	v.VersionedSignedBuilderBid = &builderSpec.VersionedSignedBuilderBid{}
-
-	if partialBid.Version == consensusSpec.DataVersionDeneb {
+	switch partialBid.Version {
+	case consensusSpec.DataVersionDeneb:
 		var dataBid struct {
-			Message *deneb.SignedBuilderBid `json:"data"`
+			Data struct {
+				Message   *deneb.BuilderBid   `json:"message"`
+				Signature phase0.BLSSignature `json:"signature"`
+				Proofs    *InclusionProof     `json:"proofs"`
+			} `json:"data"`
 		}
 
 		err = json.Unmarshal(data, &dataBid)
@@ -94,48 +75,20 @@ func (v *VersionedSignedBuilderBidWithProofs) UnmarshalJSON(data []byte) error {
 			return err
 		}
 
-		v.Proofs = partialBid.Proofs
-		v.Version = partialBid.Version
-		v.Deneb = dataBid.Message
+		v.VersionedSignedBuilderBid = &builderSpec.VersionedSignedBuilderBid{
+			Version: partialBid.Version,
+			Deneb:   &deneb.SignedBuilderBid{Message: dataBid.Data.Message, Signature: dataBid.Data.Signature},
+		}
+
+		v.Proofs = dataBid.Data.Proofs
 
 		return nil
+	default:
+		return fmt.Errorf(
+			"failed to unmarshal VersionedSignedBuilderBidWithProofs: unknown or unsupported data version %s",
+			partialBid.Version,
+		)
 	}
-
-	if partialBid.Version == consensusSpec.DataVersionCapella {
-		var dataBid struct {
-			Message *capella.SignedBuilderBid `json:"data"`
-		}
-
-		err = json.Unmarshal(data, &dataBid)
-		if err != nil {
-			return err
-		}
-
-		v.Proofs = partialBid.Proofs
-		v.Version = partialBid.Version
-		v.Capella = dataBid.Message
-
-		return nil
-	}
-
-	if partialBid.Version == consensusSpec.DataVersionBellatrix {
-		var dataBid struct {
-			Message *bellatrix.SignedBuilderBid `json:"data"`
-		}
-
-		err = json.Unmarshal(data, &dataBid)
-		if err != nil {
-			return err
-		}
-
-		v.Proofs = partialBid.Proofs
-		v.Version = partialBid.Version
-		v.Bellatrix = dataBid.Message
-
-		return nil
-	}
-
-	return fmt.Errorf("failed to unmarshal VersionedSignedBuilderBidWithProofs: %v", err)
 }
 
 func (v *VersionedSignedBuilderBidWithProofs) String() string {

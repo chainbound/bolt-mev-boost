@@ -242,11 +242,11 @@ func TestGenerateMerkleMultiProofs(t *testing.T) {
 
 	// Constraints
 	constraints := []struct {
-		tx   Transaction
+		tx   HexTransaction
 		hash phase0.Hash32
 	}{
-		{tx: Transaction(*byteTxs[0]), hash: phase0.Hash32(payloadTransactions[0].Hash())},
-		{tx: Transaction(*byteTxs[1]), hash: phase0.Hash32(payloadTransactions[1].Hash())},
+		{tx: HexTransaction(*byteTxs[0]), hash: phase0.Hash32(payloadTransactions[0].Hash())},
+		{tx: HexTransaction(*byteTxs[1]), hash: phase0.Hash32(payloadTransactions[1].Hash())},
 	}
 
 	// Create root node

@@ -218,7 +218,7 @@ func (m *mockRelay) defaultHandleSubmitConstraint(w http.ResponseWriter, req *ht
 }
 
 func (m *mockRelay) MakeGetHeaderWithConstraintsResponse(value uint64, blockHash, parentHash, publicKey string, version spec.DataVersion, constraints []struct {
-	tx   Transaction
+	tx   HexTransaction
 	hash phase0.Hash32
 },
 ) *VersionedSignedBuilderBidWithProofs {

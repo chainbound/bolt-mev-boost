@@ -7,14 +7,14 @@ import (
 // MaxBytesPerTransaction is the maximum length in bytes of a raw RLP-encoded transaction
 var MaxBytesPerTransaction uint64 = 1_073_741_824 // 2**30
 
-// Transaction is a wrapper type of byte slice to implement the ssz.HashRoot interface
-type Transaction HexBytes
+// HexTransaction is a wrapper type of byte slice to implement the ssz.HashRoot interface
+type HexTransaction HexBytes
 
 // HashTreeRoot calculates the hash tree root of the transaction, which
 // is a list of basic types (byte).
 //
 // Reference: https://github.com/ethereum/consensus-specs/blob/dev/ssz/simple-serialize.md#merkleization
-func (tx *Transaction) HashTreeRoot() ([32]byte, error) {
+func (tx *HexTransaction) HashTreeRoot() ([32]byte, error) {
 	hasher := ssz.NewHasher()
 	tx.HashTreeRootWith(hasher)
 	root, err := hasher.HashRoot()
@@ -22,7 +22,7 @@ func (tx *Transaction) HashTreeRoot() ([32]byte, error) {
 	return root, err
 }
 
-func (tx *Transaction) HashTreeRootWith(hh ssz.HashWalker) error {
+func (tx *HexTransaction) HashTreeRootWith(hh ssz.HashWalker) error {
 	var err error
 	byteLen := uint64(len(*tx))
 
@@ -45,20 +45,20 @@ func (tx *Transaction) HashTreeRootWith(hh ssz.HashWalker) error {
 	return nil
 }
 
-func (tx *Transaction) GetTree() (*ssz.Node, error) {
+func (tx *HexTransaction) GetTree() (*ssz.Node, error) {
 	w := &ssz.Wrapper{}
 	tx.HashTreeRootWith(w)
 	return w.Node(), nil
 }
 
-func (tx *Transaction) Equal(other *Transaction) bool {
+func (tx *HexTransaction) Equal(other *HexTransaction) bool {
 	return HexBytes(*tx).Equal(HexBytes(*other))
 }
 
-func (tx *Transaction) MarshalJSON() ([]byte, error) {
+func (tx *HexTransaction) MarshalJSON() ([]byte, error) {
 	return (*HexBytes)(tx).MarshalJSON()
 }
 
-func (tx *Transaction) UnmarshalJSON(input []byte) error {
+func (tx *HexTransaction) UnmarshalJSON(input []byte) error {
 	return (*HexBytes)(tx).UnmarshalJSON(input)
 }
