@@ -829,10 +829,6 @@ func (m *BoostService) handleGetHeaderWithProofs(w http.ResponseWriter, req *htt
 				return
 			}
 
-			if responsePayload.Proofs != nil {
-				log.Infof("[BOLT]: get header with proofs at slot %s, received payload with proofs: %s", slot, responsePayload)
-			}
-
 			if code == http.StatusNoContent {
 				log.Warn("no-content response")
 				return
